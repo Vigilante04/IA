@@ -1,13 +1,10 @@
-from flask import Flask, render_template, request, jsonify
 import mysql.connector
 from datetime import datetime
 
-app = Flask(__name__)  # ✅ Correct Flask app initialization
-
-# ✅ Risk Categorized Stocks (Replacing "HDFC.NS" with "SBIN.NS")
+# ✅ Risk Categorized Stocks
 risk_categories = {
     "Low": ["HDFCBANK.NS", "INFY.NS", "TCS.NS", "HINDUNILVR.NS", "ITC.NS"],
-    "Medium": ["RELIANCE.NS", "KOTAKBANK.NS", "SBIN.NS", "LT.NS", "TITAN.NS"],  # ✅ Updated stock
+    "Medium": ["RELIANCE.NS", "KOTAKBANK.NS", "SBIN.NS", "LT.NS", "TITAN.NS"],
     "High": ["ADANIENT.NS", "VEDL.NS", "TATAMOTORS.NS", "BANDHANBNK.NS", "COALINDIA.NS"]
 }
 
@@ -21,40 +18,34 @@ def get_db_connection():
             password="AVNS_vXNFl9Ki3ktcBsr0Iub",
             database="defaultdb"
         )
+        print("✅ Database connection successful.")
         return conn
     except mysql.connector.Error as err:
         print(f"❌ Database connection failed: {err}")
         return None
 
-@app.route("/")
-def index():
-    """Render the main page with a dropdown for risk category and a date selector."""
-    return render_template("index.html", categories=risk_categories.keys())
-
-@app.route("/predict", methods=["POST"])
-def predict():
-    """Fetch predictions from MySQL based on user input."""
-    risk_category = request.form.get("risk_category")
-    future_date = request.form.get("future_date")
-
-    if not risk_category or not future_date:
-        return jsonify({"error": "Please provide both risk category and future date"}), 400
-
+# ✅ Fetch Predictions from MySQL
+def fetch_predictions(risk_category, future_date):
     try:
         future_date_obj = datetime.strptime(future_date, "%Y-%m-%d").date()
         today = datetime.now().date()
 
         if future_date_obj <= today:
-            return jsonify({"error": "Please enter a valid future date"}), 400
+            print("❗ Please enter a valid future date.")
+            return
 
         recommended_stocks = risk_categories.get(risk_category, [])
+        if not recommended_stocks:
+            print("❗ Invalid risk category.")
+            return
+        
         predictions = []
 
-        # ✅ Get a fresh database connection
+        # ✅ Get Database Connection
         db = get_db_connection()
         if not db:
-            return jsonify({"error": "Database connection failed"}), 500
-
+            return
+        
         cursor = db.cursor()
 
         for stock in recommended_stocks:
@@ -65,7 +56,7 @@ def predict():
             cursor.execute(query, (stock, future_date_obj, risk_category))
             
             result = cursor.fetchone()
-            print(f"📌 Fetching for: {stock} on {future_date_obj} → Result: {result}")  # ✅ Debugging
+            print(f"📌 Fetching for: {stock} on {future_date_obj} → Result: {result}")
 
             predicted_price = float(result[0]) if result else "No Prediction Available"
             predictions.append({"stock": stock, "predicted_price": predicted_price})
@@ -73,18 +64,19 @@ def predict():
         cursor.close()
         db.close()
 
+        # ✅ Display Results
         if all(p["predicted_price"] == "No Prediction Available" for p in predictions):
-            return jsonify({"error": "No predictions available for this date and category"}), 404
-
-        return jsonify({
-            "risk_category": risk_category,
-            "date": future_date,
-            "predictions": predictions
-        })
+            print("❗ No predictions available for this date and category.")
+        else:
+            print(f"\n📅 Predictions for {future_date_obj} ({risk_category} Risk Category)")
+            for p in predictions:
+                print(f" - {p['stock']}: {p['predicted_price']}")
 
     except Exception as e:
         print(f"❌ Error: {e}")
-        return jsonify({"error": str(e)}), 500
 
+# ✅ Main Execution
 if __name__ == "__main__":
-    app.run(debug=True)
+    risk_category = input("Enter risk category (Low, Medium, High): ")
+    future_date = input("Enter future date (YYYY-MM-DD): ")
+    fetch_predictions(risk_category, future_date)
